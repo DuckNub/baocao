@@ -421,7 +421,7 @@
     <div id="feedback-overlay"><span class="fx-text" id="fx-text"></span></div>
 
     <div class="container" id="start-screen">
-        <h2>HỌC ĐI EM ZAI:)</h2>
+        <h2>HỌC ĐI EM ZAI</h2>
         <div class="checkbox-group">
             <script>for(let i=1; i<=10; i++) document.write(`<button onclick="this.classList.toggle('selected')">${i}</button>`);</script>
         </div>
@@ -466,7 +466,7 @@
 
 <script>
     let selectedTables = [], scoreRight = 0, scoreWrong = 0;
-    let questionQueue = [], answeredCount = 0, currentQuestion = null;
+    let sessionPlan = [], position = 0, currentQuestion = null, currentQuestionPos = -1;
     let currentCorrect, timerInterval, timeLeft;
     let audio = document.getElementById("bg-music"), isMusicPlaying = false;
     let musicTracks = ['nhac.mp3', 'nhac2.mp3'];
@@ -528,7 +528,7 @@
         return arr;
     }
 
-    function generateQuestionQueue(n, tables) {
+    function generateSessionPlan(n, tables) {
         const combos = buildCombos(tables);
         const queue = [];
         while (queue.length < n) {
@@ -545,17 +545,16 @@
     // -------------------------------------------------------------------------
 
     function updateProgressLabel() {
-        // total = số câu đã trả lời (kể cả câu hiện tại) + số câu còn lại trong hàng đợi
-        document.getElementById('current-q').innerText = answeredCount;
-        document.getElementById('max-q').innerText = answeredCount + questionQueue.length;
+        document.getElementById('current-q').innerText = position;
+        document.getElementById('max-q').innerText = sessionPlan.length;
     }
 
     function startGame() {
         selectedTables = Array.from(document.querySelectorAll('.selected')).map(el => parseInt(el.innerText));
         const total = parseInt(document.getElementById('total-questions').value);
         if (selectedTables.length === 0 || !total) return alert("Điền đủ thông tin nhé!");
-        questionQueue = generateQuestionQueue(total, selectedTables);
-        answeredCount = 0;
+        sessionPlan = generateSessionPlan(total, selectedTables);
+        position = 0;
         scoreRight = 0;
         scoreWrong = 0;
         sessionQuestionTimes = [];
@@ -581,12 +580,13 @@
 
     function nextQuestion() {
         clearInterval(timerInterval);
-        if (questionQueue.length === 0) {
+        if (position >= sessionPlan.length) {
             finishSession();
             return;
         }
-        currentQuestion = questionQueue.shift();
-        answeredCount++;
+        currentQuestion = sessionPlan[position];
+        currentQuestionPos = position;
+        position++;
         currentCorrect = currentQuestion.res;
         document.getElementById('question').innerText = `${currentQuestion.t} x ${currentQuestion.m} = ?`;
         document.getElementById('answer').value = '';
@@ -611,7 +611,7 @@
 
         saveHistoryEntry({
             date: formatNow(),
-            totalAnswered: answeredCount,
+            totalAnswered: sessionPlan.length,
             correct: scoreRight,
             wrong: scoreWrong,
             avgTime: avgTime.toFixed(1),
@@ -707,12 +707,23 @@
     }
     // -------------------------------------------------------------------------
 
-    // ---- làm sai câu nào thì chèn lại câu đó cách 3-6 câu sau, để ôn ngay
-    // trong lúc còn nhớ, thay vì dồn hết về cuối buổi học ----
-    function scheduleRetry(question) {
+    // ---- làm sai câu nào thì cho hiện lại câu đó ở một vị trí trong khoảng
+    // 3-6 câu sau (thế chỗ 1 câu chưa làm tới), để ôn ngay trong lúc còn nhớ.
+    // Tổng số câu KHÔNG tăng lên, vì chỉ ghi đè vào 1 slot còn trống phía sau ----
+    function scheduleRetry(question, answeredPos) {
         const offset = 3 + Math.floor(Math.random() * 4); // 3..6 câu sau
-        const pos = Math.min(offset, questionQueue.length);
-        questionQueue.splice(pos, 0, { ...question });
+        let target = answeredPos + offset;
+
+        // không còn đủ chỗ ở cuối -> nhét vào slot cuối cùng còn lại (nếu có)
+        if (target >= sessionPlan.length) target = sessionPlan.length - 1;
+        // slot đó phải là slot CHƯA hiện ra (>= position hiện tại)
+        if (target < position) target = sessionPlan.length - 1;
+
+        if (target >= position && target < sessionPlan.length) {
+            sessionPlan[target] = { ...question };
+        }
+        // nếu không còn chỗ nào phù hợp (gần hết bài) thì đành bỏ qua,
+        // để không phá vỡ tổng số câu cố định
     }
     // -------------------------------------------------------------------------
 
